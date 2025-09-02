@@ -1,105 +1,136 @@
 package apicalendario.com.calendario_api.services;
 
+import java.time.DayOfWeek;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.time.temporal.TemporalAdjusters;
 import java.util.ArrayList;
-import java.util.Calendar;
 import java.util.Date;
 import java.util.List;
+import java.util.stream.Collectors;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import apicalendario.com.calendario_api.dtos.FestivoDto;
+import apicalendario.com.calendario_api.entities.Calendario;
 import apicalendario.com.calendario_api.entities.Festivo;
+import apicalendario.com.calendario_api.entities.Pais;
+import apicalendario.com.calendario_api.entities.Tipo;
+import apicalendario.com.calendario_api.repositories.CalendarioRepository;
 import apicalendario.com.calendario_api.repositories.FestivoRepository;
+import apicalendario.com.calendario_api.repositories.PaisRepository;
+import apicalendario.com.calendario_api.repositories.TipoRepository;
 
 @Service
 public class FestivoService implements IFestivoService {
 
-    @Autowired
-    private FestivoRepository festivoRepositorio;
+    @Autowired private FestivoRepository festivoRepositorio;
+    @Autowired private CalendarioRepository calendarioRepositorio;
+    @Autowired private PaisRepository paisRepositorio;
+    @Autowired private TipoRepository tipoRepositorio;
 
-    private Date moverA_Lunes(Date fecha) {
-        Calendar c = Calendar.getInstance();
-        c.setTime(fecha);
-        if (c.get(Calendar.DAY_OF_WEEK) != Calendar.MONDAY) {
-            fecha = agregarDias(fecha, 8 - c.get(Calendar.DAY_OF_WEEK));
+    
+    private LocalDate moverA_Lunes(LocalDate fecha) {
+        if (fecha.getDayOfWeek() != DayOfWeek.MONDAY) {
+            return fecha.with(TemporalAdjusters.next(DayOfWeek.MONDAY));
         }
         return fecha;
     }
 
-    private Date agregarDias(Date fecha, int dias) {
-        Calendar c = Calendar.getInstance();
-        c.setTime(fecha);
-        c.add(Calendar.DATE, dias);
-        return c.getTime();
-    }
-
-    private Date getDomingoRamos(int anio) {
-        int a = anio % 19;
-        int b = anio % 4;
-        int c = anio % 7;
+    private LocalDate getDomingoPascua(int anio) {
+        int a = anio % 19, b = anio % 4, c = anio % 7;
         int d = (19 * a + 24) % 30;
         int dias = d + (2 * b + 4 * c + 6 * d + 5) % 7;
-
-        return agregarDias(new Date(anio - 1900, 2, 15), dias);
+        LocalDate domingoRamos = LocalDate.of(anio, 3, 15).plusDays(dias);
+        return domingoRamos.plusDays(7);
     }
 
     @Override
-    public List<Date> obtenerFestivos(int anio) {
-        List<Festivo> festivos = festivoRepositorio.findAll();
-        if (festivos == null) return null;
+    public List<FestivoDto> obtenerFestivos(int anio) {
+        List<Festivo> festivosDB = festivoRepositorio.findAll();
+        List<FestivoDto> fechasFestivas = new ArrayList<>();
+        LocalDate pascua = getDomingoPascua(anio);
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
 
-        List<Date> fechas = new ArrayList<Date>();
-        for (final Festivo festivo : festivos) {
-            Date domingoRamos = getDomingoRamos(anio);
+        for (final Festivo festivo : festivosDB) {
+            LocalDate fechaFestivo;
             switch (festivo.getTipo().getId()) {
-                case 1: // Fijo
-                    fechas.add(new Date(anio - 1900, festivo.getMes() - 1, festivo.getDia()));
-                    break;
-                case 2: // Ley Puente
-                    fechas.add(moverA_Lunes(new Date(anio - 1900, festivo.getMes() - 1, festivo.getDia())));
-                    break;
-                case 3: // Basado en Pascua
-                    fechas.add(agregarDias(domingoRamos, festivo.getDiasPascua() + 7));
-                    break;
-                case 4: // Basado en Pascua y Ley Puente
-                    fechas.add(moverA_Lunes(agregarDias(domingoRamos, festivo.getDiasPascua() + 7)));
-                    break;
+                case 1: fechaFestivo = LocalDate.of(anio, festivo.getMes(), festivo.getDia()); break;
+                case 2: fechaFestivo = moverA_Lunes(LocalDate.of(anio, festivo.getMes(), festivo.getDia())); break;
+                case 3: fechaFestivo = pascua.plusDays(festivo.getDiasPascua()); break;
+                case 4: fechaFestivo = moverA_Lunes(pascua.plusDays(festivo.getDiasPascua())); break;
+                default: continue;
             }
+            fechasFestivas.add(new FestivoDto(festivo.getNombre(), formatter.format(fechaFestivo)));
         }
-        return fechas;
+        return fechasFestivas;
     }
 
     @Override
     public String verificarFecha(int anio, int mes, int dia) {
         try {
-            Date fecha = new Date(anio-1900, mes-1, dia);
-            List<Date> festivos = obtenerFestivos(anio);
-
-            for (Date festivo : festivos) {
-                if (festivo.getYear() == fecha.getYear() && festivo.getMonth() == fecha.getMonth() && festivo.getDate() == fecha.getDate()) {
-                    return "Es festivo";
-                }
-            }
-
-            Calendar c = Calendar.getInstance();
-            c.setTime(fecha);
-            if (c.get(Calendar.DAY_OF_WEEK) == Calendar.SATURDAY || c.get(Calendar.DAY_OF_WEEK) == Calendar.SUNDAY) {
-                 return "Es fin de semana";
-            }
-
-            return "No es festivo";
+            LocalDate fechaVerificar = LocalDate.of(anio, mes, dia);
+            List<FestivoDto> festivos = obtenerFestivos(anio);
+            boolean esFestivo = festivos.stream().anyMatch(f -> f.getFecha().equals(fechaVerificar.toString()));
+            if (esFestivo) return "Es Festivo";
+            else return "No es festivo";
         } catch (Exception e) {
             return "Fecha No válida";
         }
     }
 
+    
     @Override
     public boolean generarCalendario(int anio, int paisId) {
-        // TODO: Implementar lógica para generar y guardar el calendario anual
-        return true;
+        try {
+            
+            Pais pais = paisRepositorio.findById(paisId).orElseThrow(() -> new RuntimeException("País no encontrado"));
+            Tipo tipoLaboral = tipoRepositorio.findById(1).orElseThrow(() -> new RuntimeException("Tipo Día Laboral no encontrado"));
+            Tipo tipoFinDeSemana = tipoRepositorio.findById(2).orElseThrow(() -> new RuntimeException("Tipo Fin de Semana no encontrado"));
+            Tipo tipoFestivo = tipoRepositorio.findById(3).orElseThrow(() -> new RuntimeException("Tipo Día Festivo no encontrado"));
+
+            
+            List<LocalDate> festivos = obtenerFestivos(anio).stream()
+                                                            .map(dto -> LocalDate.parse(dto.getFecha()))
+                                                            .collect(Collectors.toList());
+
+            
+            LocalDate fecha = LocalDate.of(anio, 1, 1);
+            while (fecha.getYear() == anio) {
+                Calendario diaCalendario = new Calendario();
+                diaCalendario.setPais(pais);
+                diaCalendario.setFecha(Date.from(fecha.atStartOfDay(ZoneId.systemDefault()).toInstant()));
+                diaCalendario.setDescripcion(fecha.getDayOfWeek().name());
+
+                
+                if (festivos.contains(fecha)) {
+                    diaCalendario.setTipo(tipoFestivo);
+                } else if (fecha.getDayOfWeek() == DayOfWeek.SATURDAY || fecha.getDayOfWeek() == DayOfWeek.SUNDAY) {
+                    diaCalendario.setTipo(tipoFinDeSemana);
+                } else {
+                    diaCalendario.setTipo(tipoLaboral);
+                }
+
+                
+                calendarioRepositorio.save(diaCalendario);
+
+                fecha = fecha.plusDays(1); 
+            }
+            return true;
+        } catch (Exception e) {
+            e.printStackTrace();
+            return false;
+        }
     }
 
     @Override
-    public List<String> listarCalendario(int anio, int paisId) {
-        // TODO: Implementar lógica para listar el calendario desde la base de datos
-        return new ArrayList<>();
+    public List<Calendario> listarCalendario(int anio, int paisId) {
+        LocalDate inicio = LocalDate.of(anio, 1, 1);
+        LocalDate fin = LocalDate.of(anio, 12, 31);
+
+        Date fechaInicio = Date.from(inicio.atStartOfDay(ZoneId.systemDefault()).toInstant());
+        Date fechaFin = Date.from(fin.atStartOfDay(ZoneId.systemDefault()).toInstant());
+
+        return calendarioRepositorio.findByPaisIdAndFechaBetween(paisId, fechaInicio, fechaFin);
     }
 }
