@@ -1,31 +1,55 @@
 version: '3.8'
 
 services:
-  # Servicio de la Base de Datos
-  db:
+  # --- API QUE GENERA LOS FESTIVOS  ---
+  db-festivos:
     image: postgres:14-alpine
-    container_name: dockerbdcalendario
+    container_name: db-festivos
     environment:
       - POSTGRES_DB=calendariodb
       - POSTGRES_USER=usercalendario
       - POSTGRES_PASSWORD=pwdcalendario
     volumes:
-      - ./database:/docker-entrypoint-initdb.d
+      - ./database-festivos:/docker-entrypoint-initdb.d
     networks:
-      - redcalendario
+      - red-laboratorio
 
-  # Servicio de la API
-  api:
-    build: ./api/calendario-api # Ruta a la carpeta que contiene el Dockerfile
-    container_name: dockerapicalendario
+  api-festivos:
+    build: ./api-festivos
+    container_name: api-festivos
     depends_on:
-      - db
+      - db-festivos
     ports:
+      
       - "8080:8080"
     networks:
-      - redcalendario
+      - red-laboratorio
 
-# Definición de la red de contenedores
+  # --- API QUE GENERA CALENDARIO---
+  db-calendario:
+    image: postgres:14-alpine
+    container_name: db-calendario
+    environment:
+      - POSTGRES_DB=calendariodb_gen
+      - POSTGRES_USER=usergen
+      - POSTGRES_PASSWORD=q1w2e3r4
+    volumes:
+      - ./database-calendario:/docker-entrypoint-initdb.d
+    networks:
+      - red-laboratorio
+
+  api-calendario:
+    build: ./api-calendario
+    container_name: api-calendario
+    depends_on:
+      - db-calendario
+      - api-festivos
+    ports:
+      
+      - "8081:8081"
+    networks:
+      - red-laboratorio
+
 networks:
-  redcalendario:
+  red-laboratorio:
     driver: bridge
