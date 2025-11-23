@@ -18,14 +18,12 @@ phases:
   
   build:
     commands:
-      - echo "Listing directory structure..."
-      - ls -R 
-      - echo Building the Maven project...
-      # Volvemos a intentar la ruta más probable basada en el nombre del repo
-      # Si 'calendario-api' está en la raíz:
-      - mvn clean package -DskipTests -f calendario-api/pom.xml
+      - echo Building the Maven project in api-calendario...
+      # CORRECCIÓN: Usar el nombre real de la carpeta "api-calendario"
+      - mvn clean package -DskipTests -f api-calendario/pom.xml 
       - echo Building the Docker image...
-      - docker build -t $IMAGE_REPO_NAME:$IMAGE_TAG calendario-api/.
+      # CORRECCIÓN: Contexto de Docker apuntando a "api-calendario"
+      - docker build -t $IMAGE_REPO_NAME:$IMAGE_TAG api-calendario/. 
       - docker tag $IMAGE_REPO_NAME:$IMAGE_TAG $REPOSITORY_URI:$IMAGE_TAG
   
   post_build:
