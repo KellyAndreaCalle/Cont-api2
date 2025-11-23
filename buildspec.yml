@@ -8,31 +8,38 @@ phases:
   pre_build:
     commands:
       - echo Logging in to Amazon ECR...
-      - AWS_ACCOUNT_ID=$AWS_ACCOUNT_ID
-      - AWS_DEFAULT_REGION=$AWS_DEFAULT_REGION
-      - IMAGE_REPO_NAME=$IMAGE_REPO_NAME
-      - REPOSITORY_URI=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO_NAME
+      - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com
+      
+      # DEFINIMOS LAS URIs DE LOS DOS REPOSITORIOS
+      - REPO_CALENDARIO=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/springboot-ic-dc
+      - REPO_FESTIVOS=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/springboot-api-festivos
+      
       - COMMIT_HASH=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c 1-7)
       - IMAGE_TAG=${COMMIT_HASH:=latest}
-      - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $REPOSITORY_URI
-  
+
   build:
     commands:
-      - echo Building the Maven project in api-calendario...
-      # CORRECCIÓN: Usar el nombre real de la carpeta "api-calendario"
-      - mvn clean package -DskipTests -f api-calendario/pom.xml 
-      - echo Building the Docker image...
-      # CORRECCIÓN: Contexto de Docker apuntando a "api-calendario"
-      - docker build -t $IMAGE_REPO_NAME:$IMAGE_TAG api-calendario/. 
-      - docker tag $IMAGE_REPO_NAME:$IMAGE_TAG $REPOSITORY_URI:$IMAGE_TAG
-  
+      # ---------------------------------------------------------
+      # 1. CONSTRUCCIÓN DE API FESTIVOS
+      # ---------------------------------------------------------
+      - echo Building API FESTIVOS...
+      - cd api-festivos
+      - mvn clean package -DskipTests # Compila Festivos
+      - docker build -t $REPO_FESTIVOS:$IMAGE_TAG .
+      - cd .. # Volvemos a la raíz
+
+      # ---------------------------------------------------------
+      # 2. CONSTRUCCIÓN DE API CALENDARIO
+      # ---------------------------------------------------------
+      - echo Building API CALENDARIO...
+      - cd api-calendario
+      - mvn clean package -DskipTests # Compila Calendario
+      - docker build -t $REPO_CALENDARIO:$IMAGE_TAG .
+      - cd .. # Volvemos a la raíz
+
   post_build:
     commands:
-      - echo Pushing the Docker image to Amazon ECR...
-      - docker push $REPOSITORY_URI:$IMAGE_TAG
-      - echo Creating imagedefinitions.json file...
-      - printf '[{"name":"%s","imageUri":"%s"}]' "$CONTAINER_NAME" "$REPOSITORY_URI:$IMAGE_TAG" > imagedefinitions.json
-
-artifacts:
-  files:
-    - imagedefinitions.json
+      - echo Pushing images to ECR...
+      - docker push $REPO_FESTIVOS:$IMAGE_TAG
+      - docker push $REPO_CALENDARIO:$IMAGE_TAG
+      - echo All images pushed successfully!
