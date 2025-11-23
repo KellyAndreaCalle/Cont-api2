@@ -16,14 +16,14 @@ phases:
       - IMAGE_TAG=${COMMIT_HASH:=latest}
       - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $REPOSITORY_URI
   
-  build:
+build:
     commands:
-      - echo Building the Maven project in calendario-api...
-      # 1. Ejecutar Maven en el subdirectorio
-      - mvn clean package -DskipTests -f calendario-api/pom.xml 
+      - echo Building the Maven project in api/calendario-api...
+      # Ajustamos la ruta del POM. Verifica si la carpeta es "api" o "contApi"
+      - mvn clean package -DskipTests -f api/calendario-api/pom.xml 
       - echo Building the Docker image...
-      # 2. Construir la imagen, usando el subdirectorio como CONTEXTO
-      - docker build -t $IMAGE_REPO_NAME:$IMAGE_TAG calendario-api/. 
+      # Ajustamos el contexto de Docker
+      - docker build -t $IMAGE_REPO_NAME:$IMAGE_TAG api/calendario-api/. 
       - docker tag $IMAGE_REPO_NAME:$IMAGE_TAG $REPOSITORY_URI:$IMAGE_TAG
   
   post_build:
